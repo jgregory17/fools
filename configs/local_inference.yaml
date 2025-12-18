@@ -1,0 +1,49 @@
+# Local Inference Agent Configuration
+# Uses local models for all inference (no API calls)
+
+name: local_inference
+description: "Voice agent with fully local ASR, LLM, and TTS inference"
+
+instructions: |
+  You are a helpful voice AI assistant running entirely on local hardware.
+  Be responsive and helpful. Since inference is local, optimize for:
+  - Concise responses (faster generation)
+  - Direct answers without unnecessary preamble
+  - Clear, simple language
+
+modules:
+  asr:
+    backend: faster_whisper
+    model: base.en  # Options: tiny, base, small, medium, large-v2
+    device: cuda    # Use cuda for GPU, cpu for CPU-only
+    compute_type: float16  # float16 for GPU, int8 for CPU
+    language: en
+    vad_filter: true
+    sample_rate: 16000  # Whisper expects 16kHz
+
+  llm:
+    backend: ollama
+    model: llama3.1:8b  # Or: mistral, phi, etc.
+    # base_url: http://localhost:11434  # Default Ollama URL
+    num_ctx: 4096
+    num_predict: 256
+    temperature: 0.7
+
+  tts:
+    backend: piper
+    voice: en_US-lessac-medium
+    # model_path: models/piper/en_US-lessac-medium.onnx
+    length_scale: 1.0  # Speaking rate (lower = faster)
+    sample_rate: 22050  # Piper typically outputs 22050Hz
+
+behavior:
+  allow_interruptions: true
+  greeting: "Hello! I'm running fully locally. How can I help?"
+  max_turns: 50
+  preemptive_generation: true  # Start generating before user finishes
+
+version: "1.0"
+tags:
+  - local
+  - gpu
+  - privacy

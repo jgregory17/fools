@@ -1,0 +1,24 @@
+# GPU Override for Docker Compose
+#
+# Use this file to enable NVIDIA GPU support for Ollama:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+#
+# Requirements:
+#   - NVIDIA GPU with CUDA support
+#   - nvidia-container-toolkit installed
+#   - Docker configured for NVIDIA runtime
+
+version: "3.9"
+
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+        limits:
+          memory: 8G

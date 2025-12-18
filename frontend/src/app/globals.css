@@ -1,0 +1,165 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 47% 6%;
+    --foreground: 210 40% 98%;
+
+    --card: 222 47% 8%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 8%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 190 100% 50%;
+    --primary-foreground: 222 47% 6%;
+
+    --secondary: 280 100% 50%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217 32% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 190 100% 50%;
+    --accent-foreground: 222 47% 6%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 32% 17%;
+    --input: 217 32% 17%;
+    --ring: 190 100% 50%;
+
+    --radius: 0.75rem;
+
+    --neon-color: #00f5ff;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Glassmorphism base */
+.glass {
+  @apply bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl;
+}
+
+.glass-strong {
+  @apply bg-white/10 backdrop-blur-2xl border border-white/20 rounded-2xl;
+}
+
+/* Neon glow effects */
+.neon-glow {
+  --neon-color: #00f5ff;
+  box-shadow: 0 0 5px var(--neon-color),
+              0 0 10px var(--neon-color),
+              0 0 20px var(--neon-color),
+              0 0 40px var(--neon-color);
+}
+
+.neon-glow-purple {
+  --neon-color: #bf00ff;
+  box-shadow: 0 0 5px var(--neon-color),
+              0 0 10px var(--neon-color),
+              0 0 20px var(--neon-color);
+}
+
+.neon-text {
+  text-shadow: 0 0 5px var(--neon-color),
+               0 0 10px var(--neon-color),
+               0 0 20px var(--neon-color);
+}
+
+/* Animated background gradient */
+.bg-gradient-animated {
+  background: linear-gradient(
+    -45deg,
+    hsl(222 47% 6%),
+    hsl(230 47% 8%),
+    hsl(250 47% 8%),
+    hsl(222 47% 6%)
+  );
+  background-size: 400% 400%;
+  animation: gradient 15s ease infinite;
+}
+
+@keyframes gradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Grid background */
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(0, 245, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 245, 255, 0.03) 1px, transparent 1px);
+  background-size: 50px 50px;
+}
+
+/* Transcript styling */
+.transcript-user {
+  @apply text-cyan-400;
+}
+
+.transcript-agent {
+  @apply text-purple-400;
+}
+
+/* Audio visualizer */
+.visualizer-bar {
+  @apply bg-gradient-to-t from-cyan-500 to-purple-500 rounded-full;
+  transition: height 0.1s ease-out;
+}
+
+/* Speaking indicator pulse */
+.speaking-pulse {
+  animation: speaking-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes speaking-pulse {
+  0%, 100% {
+    box-shadow: 0 0 10px #00f5ff, 0 0 20px #00f5ff;
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 20px #00f5ff, 0 0 40px #00f5ff, 0 0 60px #00f5ff;
+    transform: scale(1.05);
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-white/20 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-white/30;
+}
+
+/* LiveKit component overrides */
+.lk-participant-tile {
+  @apply rounded-2xl overflow-hidden;
+}
+
+.lk-focus-layout {
+  @apply gap-4;
+}

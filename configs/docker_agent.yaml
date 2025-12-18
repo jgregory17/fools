@@ -1,0 +1,61 @@
+# Docker Agent Configuration
+# This config is optimized for the Docker Compose local stack.
+# Uses Ollama for LLM, with environment variable overrides.
+
+name: docker_agent
+description: Voice agent for Docker Compose deployment
+instructions: |
+  You are a helpful voice assistant running in a Docker container.
+  Be concise and natural. Speak in short sentences suitable for voice interaction.
+  If you don't know something, say so briefly.
+
+# Module configurations using Docker service names
+modules:
+  asr:
+    backend: faster_whisper
+    model: ${ASR_MODEL:-base.en}
+    device: ${ASR_DEVICE:-auto}
+
+  llm:
+    backend: ${LLM_BACKEND:-ollama}
+    model: ${LLM_MODEL:-llama3.2}
+    base_url: ${LLM_BASE_URL:-http://ollama:11434}
+    temperature: 0.7
+    max_tokens: 256
+
+  tts:
+    backend: piper
+    voice: en_US-lessac-medium
+
+  vad:
+    backend: silero
+
+# Behavior settings
+behavior:
+  greeting: "Hello! I'm your voice assistant. How can I help you today?"
+  allow_interruptions: true
+  interruption_threshold: 0.5
+  suppress_asr_during_speech: true
+  silence_timeout_ms: 1000
+
+# Pipeline settings
+pipeline:
+  audio:
+    sample_rate: 24000
+    num_channels: 1
+    frame_duration_ms: 20
+
+  backpressure:
+    mode: drop_oldest
+    audio_in_queue_size: 100
+
+  memory:
+    max_turns: 50
+    max_context_tokens: 8000
+    auto_summarize: true
+
+version: "1.0"
+tags:
+  - docker
+  - voice
+  - assistant

@@ -1,0 +1,55 @@
+# Prometheus Configuration for Agent Playground
+#
+# Scrapes metrics from agent service(s) and Prometheus itself.
+# Uses Docker DNS for service discovery.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Alerting rules (optional - add alertmanager for production)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: []
+
+# Rule files (optional)
+# rule_files:
+#   - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Agent service(s)
+  # Uses Docker Compose service name for discovery
+  # Supports scaling: docker compose up --scale agent=3
+  - job_name: 'agent'
+    # Scrape more frequently for real-time metrics
+    scrape_interval: 5s
+    # Use Docker DNS to resolve all agent containers
+    dns_sd_configs:
+      - names:
+          - 'agent'
+        type: 'A'
+        port: 8080
+    # Fallback static config (for single agent)
+    static_configs:
+      - targets: ['agent:8080']
+    # Relabel to extract agent_id from metrics
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+):\d+'
+        replacement: '${1}'
+
+  # Ollama LLM service (basic health)
+  - job_name: 'ollama'
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['ollama:11434']
+    metrics_path: /api/tags
+    # Ollama doesn't expose Prometheus metrics, but we can check it's alive
+    # The scrape will fail gracefully if endpoint doesn't return metrics format
