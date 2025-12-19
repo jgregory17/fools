@@ -77,7 +77,7 @@ generate_password() {
         
         # Validate: contains at least 1 special character
         # Common special characters that bw generate uses
-        if [[ ! "$generated_pw" =~ [!@#\$%\^&\*\(\)_\+\-=\[\]\{\}\|;:,\.<>\?/] ]]; then
+        if [[ ! "$generated_pw" =~ [!@#\$%^&*()_+=\[\]{}|;:,.?/~\`-] ]]; then
             ((retry++))
             continue
         fi
