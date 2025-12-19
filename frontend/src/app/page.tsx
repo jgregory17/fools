@@ -40,7 +40,7 @@ export default function Home() {
   }, [handleDisconnect])
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-4">
+    <main className="min-h-screen h-screen flex items-center justify-center p-2 md:p-4 overflow-hidden">
       <AnimatePresence mode="wait">
         {!connectionConfig ? (
           <motion.div
@@ -49,6 +49,7 @@ export default function Home() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3 }}
+            className="w-full flex items-center justify-center"
           >
             <ConnectScreen
               onConnect={handleConnect}
@@ -63,7 +64,7 @@ export default function Home() {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.3 }}
-            className="w-full max-w-6xl"
+            className="w-full h-full max-w-7xl"
           >
             <LiveKitRoom
               serverUrl={connectionConfig.livekitUrl}
@@ -77,6 +78,7 @@ export default function Home() {
                 adaptiveStream: true,
                 dynacast: true,
               }}
+              className="h-full"
             >
               <RoomScreen
                 roomName={connectionConfig.room}

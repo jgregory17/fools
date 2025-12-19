@@ -27,7 +27,7 @@ export function AudioLevelMeter({ participant, isMuted, barCount = 5 }: AudioLev
     }
 
     // Create audio context and analyser
-    const audioContext = new AudioContext()
+    const audioContext = new (window as any).AudioContext()
     const analyser = audioContext.createAnalyser()
     analyser.fftSize = 64
     analyser.smoothingTimeConstant = 0.8

@@ -23,27 +23,46 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  # Agent service(s)
-  # Uses Docker Compose service name for discovery
-  # Supports scaling: docker compose up --scale agent=3
-  - job_name: 'agent'
-    # Scrape more frequently for real-time metrics
+  # OpenTelemetry Collector metrics
+  - job_name: 'otel-collector'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['otel-collector:8889']
+    # The OTel collector exports metrics that include agent metrics
+    # with proper labels preserved
+
+  # Direct agent scraping (as backup/comparison)
+  # You can disable this if all metrics go through OTel collector
+  - job_name: 'agent-direct'
     scrape_interval: 5s
-    # Use Docker DNS to resolve all agent containers
     dns_sd_configs:
       - names:
           - 'agent'
         type: 'A'
         port: 8080
-    # Fallback static config (for single agent)
     static_configs:
       - targets: ['agent:8080']
-    # Relabel to extract agent_id from metrics
     relabel_configs:
       - source_labels: [__address__]
         target_label: instance
         regex: '([^:]+):\d+'
         replacement: '${1}'
+
+  # Jaeger metrics
+  - job_name: 'jaeger'
+    static_configs:
+      - targets: ['jaeger:14269']
+
+  # Loki metrics
+  - job_name: 'loki'
+    static_configs:
+      - targets: ['loki:3100']
+    metrics_path: /metrics
+
+  # Promtail metrics
+  - job_name: 'promtail'
+    static_configs:
+      - targets: ['promtail:9080']
 
   # Ollama LLM service (basic health)
   - job_name: 'ollama'

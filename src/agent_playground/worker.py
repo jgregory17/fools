@@ -15,11 +15,12 @@ Configuration via environment variables:
   LIVEKIT_API_SECRET  - API secret for authentication
 
   # Model configuration (choose one mode)
-  AGENT_MODE          - "cloud", "local", "ollama", or "selfhosted"
+  AGENT_MODE          - "cloud", "local", "ollama", "selfhosted", or "fake"
     - cloud:      LiveKit Cloud Inference (requires LiveKit Cloud)
     - local:      Plugins with API keys (Deepgram STT, OpenAI TTS, Ollama LLM)
     - ollama:     Ollama LLM with cloud STT/TTS
     - selfhosted: Fully local - Vosk STT, Ollama LLM, Piper TTS (NO cloud APIs!)
+    - fake:       Fake LLM with local Vosk STT & Piper TTS (no heavy models!)
 
   # For local/ollama modes:
   LLM_BASE_URL        - Ollama URL (http://ollama:11434/v1)
@@ -53,7 +54,13 @@ from dotenv import load_dotenv
 from livekit import agents, rtc
 from livekit.agents import AgentServer, AgentSession, Agent, metrics, MetricsCollectedEvent
 from livekit.agents.voice import room_io
-from livekit.plugins import silero, noise_cancellation
+from livekit.plugins import silero
+
+# Try to import noise_cancellation (only available in cloud mode)
+try:
+    from livekit.plugins import noise_cancellation
+except ImportError:
+    noise_cancellation = None  # Not available in fake/selfhosted mode
 
 # Load environment variables
 load_dotenv(".env.local")
@@ -118,107 +125,33 @@ Keep explanations clear and concise for voice. Avoid reading long code blocks al
         return instructions_map.get(config_name, default_instructions)
 
 
-def create_session(agent_mode: str = "cloud") -> AgentSession:
+def create_session() -> AgentSession:
     """
-    Create an AgentSession with the appropriate STT/LLM/TTS configuration.
+    Create an AgentSession with fully self-hosted components.
 
-    Args:
-        agent_mode: "cloud" for LiveKit Inference, "local" for self-hosted plugins
+    Uses:
+    - Vosk for Speech-to-Text (local, CPU-based)
+    - Ollama for LLM (local, supports various models)
+    - Piper for Text-to-Speech (local, neural TTS)
+
+    All components run locally - NO cloud APIs required!
     """
-    # Load VAD (always local - downloads model on first run)
-    vad = silero.VAD.load()
+    from .local_agent import create_selfhosted_session
 
-    if agent_mode == "cloud":
-        # Use LiveKit Inference (requires LiveKit Cloud)
-        # These string descriptors route to LiveKit's hosted inference
-        logger.info("Using LiveKit Cloud Inference for STT/LLM/TTS")
+    vosk_model = os.environ.get("VOSK_MODEL", "vosk-model-small-en-us-0.15")
+    llm_base_url = os.environ.get("LLM_BASE_URL", "http://ollama:11434/v1")
+    llm_model = os.environ.get("LLM_MODEL", "llama3.2")
 
-        return AgentSession(
-            stt="deepgram/nova-3",  # or "assemblyai/universal-streaming:en"
-            llm="openai/gpt-4.1-mini",
-            tts="cartesia/sonic-3:9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
-            vad=vad,
-        )
+    logger.info("Starting self-hosted voice agent:")
+    logger.info(f"  STT: Vosk ({vosk_model}) - local CPU")
+    logger.info(f"  LLM: Ollama ({llm_model}) at {llm_base_url}")
+    logger.info(f"  TTS: Piper - local CPU")
 
-    elif agent_mode == "local":
-        # Use plugins with API keys for self-hosted setup
-        logger.info("Using local/plugin mode for STT/LLM/TTS")
-
-        from livekit.plugins import openai as openai_plugin
-        from livekit.plugins import deepgram as deepgram_plugin
-
-        # LLM: Ollama (local, free)
-        llm_base_url = os.environ.get("LLM_BASE_URL", "http://localhost:11434/v1")
-        llm_model = os.environ.get("LLM_MODEL", "llama3.2")
-
-        llm = openai_plugin.LLM.with_ollama(
-            model=llm_model,
-            base_url=llm_base_url,
-            temperature=0.7,
-        )
-        logger.info(f"LLM: Ollama ({llm_model}) at {llm_base_url}")
-
-        # STT: Deepgram (requires DEEPGRAM_API_KEY)
-        stt = deepgram_plugin.STT(
-            model="nova-2",
-        )
-        logger.info("STT: Deepgram Nova-2")
-
-        # TTS: OpenAI (requires OPENAI_API_KEY)
-        tts = openai_plugin.TTS(
-            model="tts-1",
-            voice="alloy",
-        )
-        logger.info("TTS: OpenAI TTS-1")
-
-        return AgentSession(
-            stt=stt,
-            llm=llm,
-            tts=tts,
-            vad=vad,
-        )
-
-    elif agent_mode == "ollama":
-        # Ollama-only mode (LLM local, STT/TTS still need API keys)
-        logger.info("Using Ollama for LLM with cloud STT/TTS")
-
-        from livekit.plugins import openai as openai_plugin
-
-        llm_base_url = os.environ.get("LLM_BASE_URL", "http://ollama:11434/v1")
-        llm_model = os.environ.get("LLM_MODEL", "llama3.2")
-
-        llm = openai_plugin.LLM.with_ollama(
-            model=llm_model,
-            base_url=llm_base_url,
-            temperature=0.7,
-        )
-
-        return AgentSession(
-            stt="deepgram/nova-3",
-            llm=llm,
-            tts="cartesia/sonic-3:9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
-            vad=vad,
-        )
-
-    elif agent_mode == "selfhosted":
-        # Fully self-hosted mode - NO cloud APIs required!
-        # Uses: Vosk (streaming STT), Ollama (LLM), Piper (TTS)
-        logger.info("Using fully self-hosted mode: Vosk STT + Ollama LLM + Piper TTS")
-
-        from .local_agent import create_selfhosted_session
-
-        vosk_model = os.environ.get("VOSK_MODEL", "vosk-model-small-en-us-0.15")
-        llm_base_url = os.environ.get("LLM_BASE_URL", "http://ollama:11434/v1")
-        llm_model = os.environ.get("LLM_MODEL", "llama3.2")
-
-        return create_selfhosted_session(
-            vosk_model=vosk_model,
-            ollama_model=llm_model,
-            ollama_base_url=llm_base_url,
-        )
-
-    else:
-        raise ValueError(f"Unknown agent_mode: {agent_mode}. Valid: cloud, local, ollama, selfhosted")
+    return create_selfhosted_session(
+        vosk_model=vosk_model,
+        ollama_model=llm_model,
+        ollama_base_url=llm_base_url,
+    )
 
 
 # Create the agent server
@@ -270,9 +203,6 @@ async def voice_agent(ctx: agents.JobContext):
     import json as json_module
     from livekit import rtc
 
-    # Determine configuration
-    agent_mode = os.environ.get("AGENT_MODE", "cloud")
-
     # Get agent config from job metadata (set via token or dispatch)
     agent_config = "default"
     user_metadata = {}
@@ -283,37 +213,25 @@ async def voice_agent(ctx: agents.JobContext):
         except (json_module.JSONDecodeError, AttributeError):
             pass
 
-    logger.info(f"Starting agent in room={ctx.room.name}, config={agent_config}, mode={agent_mode}")
+    logger.info(f"Starting self-hosted agent in room={ctx.room.name}, config={agent_config}")
 
     # Create the session
-    session = create_session(agent_mode)
+    session = create_session()
 
-    # Create the agent with appropriate config
-    if agent_mode == "selfhosted":
-        # Use LocalVoiceAssistant for fully self-hosted mode
-        from .local_agent import LocalVoiceAssistant, get_local_instructions
+    # Create the LocalVoiceAssistant (uses local Piper TTS)
+    from .local_agent import LocalVoiceAssistant, get_local_instructions
 
-        piper_voice = os.environ.get("PIPER_VOICE", "en_US-lessac-medium")
-        instructions = get_local_instructions(agent_config)
+    piper_voice = os.environ.get("PIPER_VOICE", "en_US-lessac-medium")
+    instructions = get_local_instructions(agent_config)
 
-        assistant = LocalVoiceAssistant(
-            instructions=instructions,
-            piper_voice=piper_voice,
-        )
-        logger.info(f"Using LocalVoiceAssistant with Piper voice: {piper_voice}")
-    else:
-        assistant = VoiceAssistant(config_name=agent_config)
+    assistant = LocalVoiceAssistant(
+        instructions=instructions,
+        piper_voice=piper_voice,
+    )
+    logger.info(f"Using LocalVoiceAssistant with Piper voice: {piper_voice}")
 
-    # Configure room I/O options
-    # Note: BVC (noise cancellation) is cloud-only, skip for selfhosted mode
-    if agent_mode == "selfhosted":
-        audio_input_opts = room_io.AudioInputOptions()
-    else:
-        audio_input_opts = room_io.AudioInputOptions(
-            # Enable Background Voice Cancellation (BVC) for improved STT accuracy
-            # Removes background noise while preserving speech clarity
-            noise_cancellation=noise_cancellation.BVC(),
-        )
+    # Configure room I/O options (no cloud features like BVC)
+    audio_input_opts = room_io.AudioInputOptions()
 
     room_options = room_io.RoomOptions(
         audio_input=audio_input_opts,
@@ -460,16 +378,25 @@ def _get_greeting(config_name: str) -> str:
 def main():
     """Run the agent worker."""
     # Configure logging
+    debug_mode = os.environ.get("DEBUG", "").lower() in ("1", "true", "yes")
+    log_level = logging.DEBUG if debug_mode else logging.INFO
+
     logging.basicConfig(
-        level=logging.INFO,
+        level=log_level,
         format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
     )
+
+    # Enable debug for agent_playground modules
+    if debug_mode:
+        logging.getLogger("agent_playground").setLevel(logging.DEBUG)
+        logger.info("Debug logging enabled")
 
     # Log configuration
     logger.info("Agent Worker Configuration:")
     logger.info(f"  LIVEKIT_URL: {os.environ.get('LIVEKIT_URL', 'not set')}")
     logger.info(f"  AGENT_MODE: {os.environ.get('AGENT_MODE', 'cloud')}")
     logger.info(f"  LLM_MODEL: {os.environ.get('LLM_MODEL', 'llama3.2')}")
+    logger.info(f"  DEBUG: {debug_mode}")
 
     # Run the agent server
     agents.cli.run_app(server)

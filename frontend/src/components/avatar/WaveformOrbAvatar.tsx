@@ -30,32 +30,32 @@ export function WaveformOrbAvatar({
   const analyserRef = useRef<AnalyserNode | null>(null)
   const animationRef = useRef<number>(0)
 
-  // State-based colors
+  // State-based colors - Broadcast studio palette
   const stateColors = useMemo(() => {
     switch (agentState) {
       case "speaking":
         return {
-          primary: "#00f5ff",
-          secondary: "#bf00ff",
-          glow: "rgba(0, 245, 255, 0.5)",
+          primary: "#ff6b35",
+          secondary: "#ff6b35",
+          glow: "rgba(255, 107, 53, 0.5)",
         }
       case "thinking":
         return {
-          primary: "#bf00ff",
-          secondary: "#ff00ff",
-          glow: "rgba(191, 0, 255, 0.5)",
+          primary: "#d97706",
+          secondary: "#d97706",
+          glow: "rgba(217, 119, 6, 0.4)",
         }
       case "listening":
         return {
-          primary: "#00ff88",
-          secondary: "#00f5ff",
-          glow: "rgba(0, 255, 136, 0.3)",
+          primary: "#94a3b8",
+          secondary: "#94a3b8",
+          glow: "rgba(107, 114, 128, 0.3)",
         }
       default:
         return {
-          primary: "#666666",
-          secondary: "#888888",
-          glow: "rgba(100, 100, 100, 0.2)",
+          primary: "#2d2d2d",
+          secondary: "#2d2d2d",
+          glow: "rgba(37, 37, 37, 0.2)",
         }
     }
   }, [agentState])
@@ -73,7 +73,7 @@ export function WaveformOrbAvatar({
 
     if (!mediaStream) return
 
-    const audioContext = new AudioContext()
+    const audioContext = new (window as any).AudioContext()
     const analyser = audioContext.createAnalyser()
     analyser.fftSize = 64
     analyser.smoothingTimeConstant = 0.7

@@ -1,26 +1,24 @@
 # Agent Playground Dockerfile
 # Multi-stage build for efficient image
 #
+# Self-hosted voice agent with:
+#   - Vosk STT (local, CPU-based)
+#   - Ollama LLM (local, various models)
+#   - Piper TTS (local, neural TTS)
+#
 # Build: docker build -t agent-playground .
 # Run:   docker run -p 8080:8080 agent-playground
-#
-# For selfhosted mode (no cloud APIs):
-#   docker build --build-arg AGENT_MODE=selfhosted -t agent-playground .
-
-# Build argument to select mode
-ARG AGENT_MODE=selfhosted
 
 # ============================================================================
 # Build stage
 # ============================================================================
-FROM python:3.11-slim as builder
+FROM python:3.13-slim as builder
 
 WORKDIR /build
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy project files
@@ -34,10 +32,7 @@ RUN pip install --no-cache-dir build && \
 # ============================================================================
 # Runtime stage
 # ============================================================================
-FROM python:3.11-slim as runtime
-
-# Inherit build arg
-ARG AGENT_MODE=selfhosted
+FROM python:3.13-slim as runtime
 
 WORKDIR /app
 
@@ -51,19 +46,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libportaudio2 \
     curl \
+    vim \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy wheel from builder
 COPY --from=builder /build/dist/*.whl /tmp/
 
-# Install the package with appropriate extras based on mode
-# selfhosted: Vosk STT + Piper TTS + Ollama LLM (no cloud APIs)
-# livekit: Cloud/hybrid mode with LiveKit plugins
-RUN if [ "$AGENT_MODE" = "selfhosted" ]; then \
-        pip install --no-cache-dir "/tmp/*.whl[selfhosted]"; \
-    else \
-        pip install --no-cache-dir "/tmp/*.whl[livekit]"; \
-    fi
+# Install the package with selfhosted extras
+# Includes: Vosk STT + Piper TTS + Ollama LLM support (all local, no cloud APIs)
+RUN for whl in /tmp/*.whl; do pip install --no-cache-dir "$whl[selfhosted]"; done
 
 # Copy configs directory
 COPY configs/ /app/configs/
@@ -78,14 +69,20 @@ WORKDIR /home/agent
 # Create cache directories for model downloads
 RUN mkdir -p /home/agent/.cache/vosk /home/agent/.local/share/piper
 
+# Pre-download Piper voice model (en_US-lessac-medium)
+ARG PIPER_VOICE=en_US-lessac-medium
+RUN echo "Pre-downloading Piper voice: $PIPER_VOICE" && \
+    cd /home/agent/.local/share/piper && \
+    curl -L -o "${PIPER_VOICE}.onnx" "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx" && \
+    curl -L -o "${PIPER_VOICE}.onnx.json" "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json" && \
+    echo "Piper voice $PIPER_VOICE downloaded successfully"
+
 # Copy example configs
 COPY --chown=agent:agent examples/ examples/
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    # Agent mode (selfhosted = fully local, no cloud APIs)
-    AGENT_MODE=selfhosted \
     # LLM config (Ollama)
     LLM_BASE_URL=http://ollama:11434/v1 \
     LLM_MODEL=llama3.2 \
@@ -93,7 +90,7 @@ ENV PYTHONUNBUFFERED=1 \
     LIVEKIT_URL=ws://livekit:7880 \
     LIVEKIT_API_KEY=devkey \
     LIVEKIT_API_SECRET=secret \
-    # Selfhosted model config
+    # Local model config
     VOSK_MODEL=vosk-model-small-en-us-0.15 \
     PIPER_VOICE=en_US-lessac-medium
 

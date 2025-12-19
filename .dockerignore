@@ -57,6 +57,10 @@ docker-compose*.yml
 # Observability configs (mounted as volumes)
 observability/
 
+# Bitwarden scripts (only run on host)
+scripts/bw_*.sh
+.secrets/
+
 # Other
 *.log
 *.tmp

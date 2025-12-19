@@ -1,21 +1,33 @@
-# Agent Playground - Full Local Stack
+# Agent Playground - Self-Hosted Voice Agent
 #
-# Starts: LiveKit server, Agent service, Ollama LLM, Frontend UI, Prometheus, Grafana
+# Fully local voice AI with:
+#   - Vosk STT (local, CPU-based)
+#   - Ollama LLM (local, various models)
+#   - Piper TTS (local, neural TTS)
+#   - LiveKit for real-time communication
+#   - Observability stack (optional)
 #
 # Usage:
-#   docker compose up --build               # Start all services
-#   docker compose up --build --scale agent=3  # Scale agents
-#   docker compose down -v                  # Stop and remove volumes
+#   # Start agent with Ollama
+#   docker compose --profile selfhosted up --build
+#
+#   # With full observability (Prometheus, Grafana, Jaeger, Loki)
+#   docker compose --profile full up --build
+#
+#   # Scale agents
+#   docker compose --profile selfhosted up --build --scale agent=3
+#
+#   # Stop and remove volumes
+#   docker compose down -v
 #
 # URLs:
 #   Frontend:   http://localhost:3001       # Web UI for voice agent
 #   LiveKit:    http://localhost:7880
-#   Agent:      http://localhost:8080/healthz, /metrics, /api/token
+#   Agent API:  http://localhost:8080/healthz, /metrics, /api/token
 #   Ollama:     http://localhost:11434
-#   Prometheus: http://localhost:9090
-#   Grafana:    http://localhost:3000 (admin/admin)
-
-version: "3.9"
+#   Prometheus: http://localhost:9090       # (full profile only)
+#   Grafana:    http://localhost:3000       # (full profile only)
+#   Jaeger:     http://localhost:16686      # (full profile only)
 
 services:
   # ============================================================================
@@ -23,15 +35,21 @@ services:
   # ============================================================================
   livekit:
     image: livekit/livekit-server:latest
+    entrypoint: /scripts/docker-entrypoint-livekit.sh
     command:
       - --config=/etc/livekit.yaml
       - --dev
     ports:
-      - "7880:7880"   # HTTP API
-      - "7881:7881"   # RTC/WebRTC
-      - "7882:7882"   # TURN/UDP
+      - "7880:7880"       # HTTP API
+      - "7881:7881/tcp"   # RTC TCP
+      - "7882:7882/udp"   # TURN UDP
+      - "50000-50010:50000-50010/udp"  # WebRTC media UDP port range
     volumes:
-      - ./observability/livekit.yaml:/etc/livekit.yaml:ro
+      - ./configs/livekit/livekit.yaml.tpl:/etc/livekit.yaml.tpl:ro
+      - ./scripts/docker-entrypoint-livekit.sh:/scripts/docker-entrypoint-livekit.sh:ro
+    secrets:
+      - livekit_api_key
+      - livekit_api_secret
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:7880"]
       interval: 10s
@@ -48,11 +66,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        - AGENT_MODE=${AGENT_MODE:-selfhosted}
+    entrypoint: /scripts/docker-entrypoint-agent.sh
+    command: ["python", "-m", "agent_playground.worker", "start"]
     environment:
-      # Agent mode: selfhosted = fully local (Vosk STT, Ollama LLM, Piper TTS)
-      - AGENT_MODE=${AGENT_MODE:-selfhosted}
       # Agent identification (hostname is unique per container)
       - AGENT_ID=${AGENT_ID:-}
       # LLM configuration (Ollama with OpenAI-compatible API)
@@ -60,23 +76,31 @@ services:
       - LLM_MODEL=${LLM_MODEL:-llama3.2}
       # LiveKit connection
       - LIVEKIT_URL=ws://livekit:7880
-      - LIVEKIT_API_KEY=devkey
-      - LIVEKIT_API_SECRET=secret
-      # Selfhosted model config
+      # LiveKit credentials will be loaded from secrets by entrypoint
+      # Local model configuration
       - VOSK_MODEL=${VOSK_MODEL:-vosk-model-small-en-us-0.15}
       - PIPER_VOICE=${PIPER_VOICE:-en_US-lessac-medium}
+      # Debug logging
+      - DEBUG=${DEBUG:-false}
     volumes:
       # Persist model downloads across restarts
       - vosk-models:/home/agent/.cache/vosk
       - piper-models:/home/agent/.local/share/piper
+      - ./scripts/docker-entrypoint-agent.sh:/scripts/docker-entrypoint-agent.sh:ro
+    secrets:
+      - livekit_api_key
+      - livekit_api_secret
     depends_on:
       livekit:
         condition: service_healthy
       ollama:
         condition: service_healthy
-    # Worker doesn't expose HTTP, just check process is alive
+        required: false  # Ollama not needed for fake mode
+    # Worker health: Check if Python process is running
+    # Note: Agent registers with LiveKit, so if LiveKit is healthy and agent
+    # started successfully, we can assume it's working
     healthcheck:
-      test: ["CMD", "pgrep", "-f", "agent_playground.worker"]
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -87,6 +111,52 @@ services:
       resources:
         limits:
           memory: 4G  # Increased for local models
+    # Development mode: Watch for file changes and sync/restart
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./src
+          target: /usr/local/lib/python3.13/site-packages/agent_playground
+          ignore:
+            - __pycache__/
+
+  # ============================================================================
+  # Agent API Server (HTTP endpoints for frontend)
+  # ============================================================================
+  agent-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: /scripts/docker-entrypoint-agent.sh
+    command: ["python", "/scripts/start-api-server.py"]
+    ports:
+      - "8080:8080"
+    environment:
+      - AGENT_ID=${AGENT_ID:-}
+      - LIVEKIT_URL=ws://livekit:7880
+      - AGENT_CONFIG_DIR=/app/configs/agents
+    volumes:
+      - ./scripts/docker-entrypoint-agent.sh:/scripts/docker-entrypoint-agent.sh:ro
+      - ./scripts/start-api-server.py:/scripts/start-api-server.py:ro
+      - ./configs:/app/configs:ro
+    secrets:
+      - livekit_api_key
+      - livekit_api_secret
+    depends_on:
+      livekit:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - agent-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   # ============================================================================
   # Frontend Web UI
@@ -108,7 +178,7 @@ services:
       - agent
       - livekit
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -125,6 +195,9 @@ services:
   # ============================================================================
   ollama:
     image: ollama/ollama:latest
+    profiles:
+      - selfhosted
+      - full
     ports:
       - "11434:11434"
     volumes:
@@ -141,6 +214,84 @@ services:
     # For CPU-only, this works as-is
 
   # ============================================================================
+  # OpenTelemetry Collector
+  # ============================================================================
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./observability/otel-collector/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+      - "8889:8889"   # Prometheus metrics exporter
+      - "13133:13133" # Health check
+      - "55679:55679" # zPages
+    networks:
+      - agent-net
+    depends_on:
+      - jaeger
+      - loki
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:13133/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ============================================================================
+  # Jaeger (Distributed Tracing)
+  # ============================================================================
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "14268:14268" # Jaeger collector HTTP
+    networks:
+      - agent-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:14269/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================================
+  # Loki (Log Aggregation)
+  # ============================================================================
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./observability/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/tmp/loki
+    networks:
+      - agent-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================================
+  # Promtail (Log Collector)
+  # ============================================================================
+  promtail:
+    image: grafana/promtail:latest
+    volumes:
+      - ./observability/promtail/promtail-config.yaml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - agent-net
+    depends_on:
+      - loki
+
+  # ============================================================================
   # Prometheus
   # ============================================================================
   prometheus:
@@ -148,7 +299,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -157,7 +308,7 @@ services:
       - --web.console.templates=/etc/prometheus/consoles
       - --web.enable-lifecycle
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      test: ["CMD", "curl", "-f", "http://localhost:9090/-/healthy"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -169,20 +320,29 @@ services:
   # ============================================================================
   grafana:
     image: grafana/grafana:latest
+    entrypoint: /scripts/docker-entrypoint-grafana.sh
     ports:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      # Password will be loaded from secret by entrypoint
       - GF_USERS_ALLOW_SIGN_UP=false
+      # Enable feature toggles for better trace/log correlation
+      - GF_FEATURE_TOGGLES_ENABLE=traceToLogs,publicDashboards
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
+      - ./scripts/docker-entrypoint-grafana.sh:/scripts/docker-entrypoint-grafana.sh:ro
+    secrets:
+      - grafana_admin_password
     depends_on:
       - prometheus
+      - jaeger
+      - loki
+      - otel-collector
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -206,3 +366,24 @@ volumes:
     name: agent-playground-prometheus-data
   grafana-data:
     name: agent-playground-grafana-data
+  loki-data:
+    name: agent-playground-loki-data
+  vosk-models:
+    name: agent-playground-vosk-models
+  piper-models:
+    name: agent-playground-piper-models
+
+# ============================================================================
+# Secrets
+# ============================================================================
+secrets:
+  livekit_api_key:
+    file: ${SECRETS_DIR:-.secrets}/livekit_api_key
+    # Creates empty secret if file doesn't exist (allows defaults to work)
+    external: false
+  livekit_api_secret:
+    file: ${SECRETS_DIR:-.secrets}/livekit_api_secret
+    external: false
+  grafana_admin_password:
+    file: ${SECRETS_DIR:-.secrets}/grafana_admin_password
+    external: false

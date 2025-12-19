@@ -30,9 +30,10 @@ export function TranscriptPanel({ userIdentity }: TranscriptPanelProps) {
 
     const handleTextStream = async (
       reader: any,
-      participantIdentity: string
+      participantInfo: { identity: string }
     ) => {
       try {
+        const participantIdentity = participantInfo.identity
         const text = await reader.readAll()
         const info = reader.info
 
@@ -96,17 +97,19 @@ export function TranscriptPanel({ userIdentity }: TranscriptPanelProps) {
   }, [messages])
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+    <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4 min-h-0">
       <AnimatePresence initial={false}>
         {messages.length === 0 ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex flex-col items-center justify-center h-full text-muted-foreground"
+            className="flex flex-col items-center justify-center h-full text-gray-300"
           >
-            <Bot className="w-12 h-12 mb-4 opacity-50" />
-            <p className="text-sm">Waiting for conversation to start...</p>
-            <p className="text-xs mt-2">Speak into your microphone to begin</p>
+            <div className="bg-gray-800/50 p-6 rounded-full mb-4 border border-gray-700/50">
+              <Bot className="w-10 h-10 text-purple-400" />
+            </div>
+            <p className="text-sm font-medium text-white">Waiting for conversation to start...</p>
+            <p className="text-xs mt-2 text-gray-400">Speak into your microphone to begin</p>
           </motion.div>
         ) : (
           messages.map((message, index) => (
@@ -116,16 +119,16 @@ export function TranscriptPanel({ userIdentity }: TranscriptPanelProps) {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.2 }}
-              className={`flex gap-3 ${
+              className={`flex gap-2 md:gap-3 ${
                 message.sender === "user" ? "flex-row-reverse" : "flex-row"
               }`}
             >
               {/* Avatar */}
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border ${
                   message.sender === "user"
-                    ? "bg-cyan-500/20"
-                    : "bg-purple-500/20"
+                    ? "bg-cyan-900/40 border-cyan-500/50"
+                    : "bg-purple-900/40 border-purple-500/50"
                 }`}
               >
                 {message.sender === "user" ? (
@@ -137,15 +140,15 @@ export function TranscriptPanel({ userIdentity }: TranscriptPanelProps) {
 
               {/* Message Bubble */}
               <div
-                className={`max-w-[80%] px-4 py-3 rounded-2xl ${
+                className={`max-w-[85%] md:max-w-[80%] px-3 md:px-4 py-2.5 md:py-3 rounded-2xl ${
                   message.sender === "user"
-                    ? "bg-cyan-500/10 border border-cyan-500/20 rounded-tr-sm"
-                    : "bg-purple-500/10 border border-purple-500/20 rounded-tl-sm"
+                    ? "bg-cyan-900/40 border border-cyan-500/40 rounded-tr-sm"
+                    : "bg-purple-900/40 border border-purple-500/40 rounded-tl-sm"
                 } ${!message.isFinal ? "opacity-70" : ""}`}
               >
                 <p
-                  className={`text-sm ${
-                    message.sender === "user" ? "text-cyan-100" : "text-purple-100"
+                  className={`text-sm leading-relaxed ${
+                    message.sender === "user" ? "text-white" : "text-white"
                   }`}
                 >
                   {message.text}
@@ -153,13 +156,13 @@ export function TranscriptPanel({ userIdentity }: TranscriptPanelProps) {
                     <motion.span
                       animate={{ opacity: [1, 0.3, 1] }}
                       transition={{ duration: 1, repeat: Infinity }}
-                      className="ml-1"
+                      className="ml-1 text-gray-300"
                     >
                       ...
                     </motion.span>
                   )}
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-gray-400 mt-1.5">
                   {message.timestamp.toLocaleTimeString([], {
                     hour: "2-digit",
                     minute: "2-digit",

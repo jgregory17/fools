@@ -59,7 +59,7 @@ export function DeviceSelector({ selectedMic, onMicChange, showVideo = false }: 
 
   if (permissionError) {
     return (
-      <div className="flex items-center gap-2 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-400">
+      <div className="flex items-center gap-2 p-4 bg-yellow-900/30 border border-yellow-600/50 rounded-xl text-yellow-300">
         <AlertCircle className="w-5 h-5 flex-shrink-0" />
         <span className="text-sm">{permissionError}</span>
       </div>
@@ -70,17 +70,17 @@ export function DeviceSelector({ selectedMic, onMicChange, showVideo = false }: 
     <div className="space-y-4">
       {/* Microphone */}
       <div className="space-y-2">
-        <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+        <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
           <Mic className="w-4 h-4" />
           Microphone
         </label>
         <select
           value={selectedMic}
           onChange={(e) => onMicChange(e.target.value)}
-          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all appearance-none cursor-pointer"
+          className="w-full px-4 py-2.5 bg-gray-800/50 border border-gray-600/50 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all appearance-none cursor-pointer"
         >
           {audioInputs.map((device) => (
-            <option key={device.deviceId} value={device.deviceId} className="bg-gray-900">
+            <option key={device.deviceId} value={device.deviceId} className="bg-gray-900 text-white">
               {device.label}
             </option>
           ))}
@@ -89,24 +89,24 @@ export function DeviceSelector({ selectedMic, onMicChange, showVideo = false }: 
 
       {/* Speaker (for info only) */}
       <div className="space-y-2">
-        <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+        <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
           <Volume2 className="w-4 h-4" />
           Speaker
         </label>
         <select
           disabled
-          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-muted-foreground text-sm appearance-none cursor-not-allowed opacity-50"
+          className="w-full px-4 py-2.5 bg-gray-800/30 border border-gray-600/30 rounded-xl text-gray-400 text-sm appearance-none cursor-not-allowed opacity-50"
         >
           {audioOutputs.map((device) => (
-            <option key={device.deviceId} value={device.deviceId} className="bg-gray-900">
+            <option key={device.deviceId} value={device.deviceId} className="bg-gray-900 text-white">
               {device.label}
             </option>
           ))}
           {audioOutputs.length === 0 && (
-            <option className="bg-gray-900">System default</option>
+            <option className="bg-gray-900 text-white">System default</option>
           )}
         </select>
-        <p className="text-xs text-muted-foreground">Speaker selection is handled by your browser</p>
+        <p className="text-xs text-gray-400">Speaker selection is handled by your browser</p>
       </div>
 
       {/* Camera (placeholder for future) */}

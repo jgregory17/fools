@@ -11,14 +11,15 @@ export const metadata: Metadata = {
 }
 
 export default function RootLayout({
-  children,
-}: {
+  children,}: {
   children: React.ReactNode
 }) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.className} bg-gradient-animated bg-grid min-h-screen`}>
-        {children}
+      <body className={`${inter.className} min-h-screen`} style={{ background: '#161616' }}>
+        <div className="bg-grid min-h-screen">
+          {children}
+        </div>
       </body>
     </html>
   )

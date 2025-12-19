@@ -33,12 +33,41 @@ logger = logging.getLogger(__name__)
 # Import piper-tts
 try:
     from piper import PiperVoice
-    from piper.download import ensure_voice_exists, find_voice, get_voices
+    from piper.config import SynthesisConfig
     PIPER_AVAILABLE = True
 except ImportError:
     PIPER_AVAILABLE = False
     PiperVoice = None
+    SynthesisConfig = None
     logger.warning("piper-tts not installed. Run: pip install piper-tts")
+
+# Import download functions (optional - only needed for auto-download)
+try:
+    from piper.download import ensure_voice_exists, find_voice, get_voices
+    PIPER_DOWNLOAD_AVAILABLE = True
+except ImportError:
+    # Try newer piper-tts API
+    try:
+        from piper.download_voices import download_voice
+        # Wrap in compatibility function
+        def ensure_voice_exists(voice_name, data_dirs, download_dir, voices_dict):
+            """Compatibility wrapper for newer piper-tts API."""
+            # For newer API, we'll construct the expected paths
+            voice_dir = Path(download_dir) / voice_name
+            model_path = voice_dir.with_suffix('.onnx')
+            config_path = voice_dir.with_suffix('.onnx.json')
+
+            if not model_path.exists():
+                # Download using newer API
+                download_voice(voice_name, download_dir)
+
+            return str(model_path), str(config_path)
+
+        PIPER_DOWNLOAD_AVAILABLE = True
+    except ImportError:
+        ensure_voice_exists = None
+        PIPER_DOWNLOAD_AVAILABLE = False
+        logger.warning("piper download functions not available. Pre-downloaded models required.")
 
 
 class PiperTTS(BaseTTSBackend):
@@ -155,20 +184,26 @@ class PiperTTS(BaseTTSBackend):
         4. Support cancellation at sentence boundaries
         """
         self._ensure_model_loaded()
-        logger.debug("PiperTTS: Starting synthesis")
+        logger.debug("[PIPER_TTS] Starting synthesis")
 
         accumulated_text = ""
         chunk_index = 0
+        text_chunk_count = 0
 
         async for text_chunk in text_stream:
+            text_chunk_count += 1
+            logger.debug(f"[PIPER_TTS] Received text chunk #{text_chunk_count}: '{text_chunk[:100]}{'...' if len(text_chunk) > 100 else ''}'")
+
             if self._closed:
-                logger.debug("PiperTTS: Cancelled during synthesis")
+                logger.debug("[PIPER_TTS] Cancelled during synthesis")
                 break
 
             accumulated_text += text_chunk
+            logger.debug(f"[PIPER_TTS] Accumulated text length: {len(accumulated_text)} chars")
 
             # Look for sentence boundaries
             sentences = self._split_sentences(accumulated_text)
+            logger.debug(f"[PIPER_TTS] Split into {len(sentences)} sentences")
 
             # Process complete sentences (all but the last, which may be incomplete)
             for sentence in sentences[:-1]:
@@ -178,10 +213,18 @@ class PiperTTS(BaseTTSBackend):
                 if self._closed:
                     break
 
+                logger.debug(f"[PIPER_TTS] Synthesizing sentence: '{sentence[:100]}{'...' if len(sentence) > 100 else ''}'")
+
                 # Synthesize in thread pool
-                audio_data = await self._synthesize_sentence(sentence)
+                try:
+                    audio_data = await self._synthesize_sentence(sentence)
+                    logger.debug(f"[PIPER_TTS] Generated {len(audio_data)} bytes of audio")
+                except Exception as e:
+                    logger.error(f"[PIPER_TTS] Synthesis failed for sentence '{sentence[:50]}...': {e}")
+                    raise
 
                 if audio_data:
+                    logger.debug(f"[PIPER_TTS] Yielding chunk #{chunk_index}: {len(audio_data)} bytes, sample_rate={self._sample_rate}")
                     yield TTSChunk(
                         audio_data=audio_data,
                         sample_rate=self._sample_rate,
@@ -197,9 +240,17 @@ class PiperTTS(BaseTTSBackend):
 
         # Process remaining text (final sentence)
         if accumulated_text.strip() and not self._closed:
-            audio_data = await self._synthesize_sentence(accumulated_text)
+            logger.debug(f"[PIPER_TTS] Synthesizing final sentence: '{accumulated_text[:100]}{'...' if len(accumulated_text) > 100 else ''}'")
+
+            try:
+                audio_data = await self._synthesize_sentence(accumulated_text)
+                logger.debug(f"[PIPER_TTS] Final chunk: generated {len(audio_data)} bytes")
+            except Exception as e:
+                logger.error(f"[PIPER_TTS] Final synthesis failed: {e}")
+                raise
 
             if audio_data:
+                logger.debug(f"[PIPER_TTS] Yielding final chunk #{chunk_index}")
                 yield TTSChunk(
                     audio_data=audio_data,
                     sample_rate=self._sample_rate,
@@ -209,27 +260,40 @@ class PiperTTS(BaseTTSBackend):
                     chunk_index=chunk_index,
                 )
 
-        logger.debug(f"PiperTTS: Generated {chunk_index + 1} chunks")
+        logger.debug(f"[PIPER_TTS] Synthesis complete. Generated {chunk_index + 1} total chunks from {text_chunk_count} text chunks")
 
     async def _synthesize_sentence(self, text: str) -> bytes:
         """Synthesize a single sentence using Piper."""
         if not text.strip():
+            logger.debug("[PIPER_TTS] Empty text, skipping synthesis")
             return b""
 
+        logger.debug(f"[PIPER_TTS] _synthesize_sentence() called with {len(text)} chars")
         loop = asyncio.get_event_loop()
 
         def _sync_synthesize() -> bytes:
             # Synthesize to raw PCM16 audio
             audio_bytes = b""
+            chunk_count = 0
 
-            for audio_chunk in self._piper_voice.synthesize_stream_raw(
-                text,
-                length_scale=self._length_scale,
-                noise_scale=self._noise_scale,
-                noise_w=self._noise_w,
-                sentence_silence=self._sentence_silence,
-            ):
-                audio_bytes += audio_chunk
+            try:
+                # Create synthesis config with our parameters
+                syn_config = SynthesisConfig(
+                    length_scale=self._length_scale,
+                    noise_scale=self._noise_scale,
+                    noise_w_scale=self._noise_w,  # Note: parameter renamed in new API
+                )
+
+                # synthesize() returns Iterable[AudioChunk]
+                for audio_chunk in self._piper_voice.synthesize(text, syn_config):
+                    chunk_count += 1
+                    # AudioChunk has audio_int16_bytes attribute
+                    audio_bytes += audio_chunk.audio_int16_bytes
+
+                logger.debug(f"[PIPER_TTS] Synthesized {len(audio_bytes)} bytes from {chunk_count} audio chunks")
+            except Exception as e:
+                logger.error(f"[PIPER_TTS] Synthesis stream error: {e}")
+                raise
 
             return audio_bytes
 

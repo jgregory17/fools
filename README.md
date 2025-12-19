@@ -95,6 +95,111 @@ behavior:
   allow_interruptions: true
 ```
 
+## Secret Management (Bitwarden)
+
+The project includes Bitwarden integration for secure secret management. Secrets are stored in Bitwarden and synced to local Docker secret files.
+
+### Prerequisites
+
+1. Install Bitwarden CLI:
+   ```bash
+   # macOS
+   brew install bitwarden-cli
+   
+   # Linux
+   snap install bw
+   # or download from https://github.com/bitwarden/clients/releases
+   ```
+
+2. Install jq (JSON processor):
+   ```bash
+   # macOS
+   brew install jq
+   
+   # Linux
+   sudo apt-get install jq
+   ```
+
+3. Login to Bitwarden:
+   ```bash
+   bw login your-email@example.com
+   ```
+
+4. Unlock and set session:
+   ```bash
+   export BW_SESSION=$(bw unlock --raw)
+   ```
+
+### Usage
+
+#### Create or Update Secrets
+
+```bash
+# Create new secret (generates password automatically)
+scripts/bw_upsert_secret.sh --name livekit_api_secret
+
+# Create with username (syncs as name_user and name_password files)
+scripts/bw_upsert_secret.sh --name grafana_admin --username admin
+
+# Provide password explicitly (no generation)
+scripts/bw_upsert_secret.sh --name grafana_admin_password --password 'MyS3cr3tP@ss!'
+
+# Non-interactive update (skips confirmation)
+scripts/bw_upsert_secret.sh --name livekit_api_secret --yes
+
+# Interactive mode (prompts for name)
+scripts/bw_upsert_secret.sh
+```
+
+#### Sync Secrets to Docker
+
+```bash
+# Sync all project secrets to .secrets/ directory
+scripts/bw_sync_docker_secrets.sh
+
+# Dry run to see what would be synced
+scripts/bw_sync_docker_secrets.sh --dry-run
+
+# Use different output directory
+scripts/bw_sync_docker_secrets.sh --out-dir /path/to/secrets
+```
+
+### How It Works
+
+1. **bw_upsert_secret.sh**: Creates or updates Bitwarden Login items in a `local_passwords` folder
+   - Validates names as `lower_snake_case`
+   - Generates strong 41-character passwords by default
+   - Adds custom field `project=fools` for filtering
+   - Automatically calls sync script after changes
+
+2. **bw_sync_docker_secrets.sh**: Syncs Bitwarden items to Docker secret files
+   - Finds all items with `project=fools` custom field
+   - Creates files in `.secrets/` directory (gitignored)
+   - For items with username: creates `<name>_user` and `<name>_password` files
+   - For items without username: creates `<name>` file with password only
+   - Sets secure file permissions (600) and directory permissions (700)
+
+### Docker Compose Integration
+
+Use the synced secrets in your docker-compose.yml:
+
+```yaml
+secrets:
+  livekit_api_secret:
+    file: .secrets/livekit_api_secret
+  grafana_admin_user:
+    file: .secrets/grafana_admin_user
+  grafana_admin_password:
+    file: .secrets/grafana_admin_password
+
+services:
+  myservice:
+    secrets:
+      - livekit_api_secret
+      - grafana_admin_user
+      - grafana_admin_password
+```
+
 ## Local Stack (Docker Compose)
 
 Run the complete voice agent stack locally with Docker Compose. Includes LiveKit server, agent service, Ollama LLM, Prometheus metrics, and Grafana dashboards.
@@ -102,7 +207,12 @@ Run the complete voice agent stack locally with Docker Compose. Includes LiveKit
 ### Quick Start
 
 ```bash
-# Start all services (first run will pull models - may take a few minutes)
+# Option 1: Start with default dev credentials (no Bitwarden required)
+docker compose up --build
+
+# Option 2: Use Bitwarden-managed secrets
+export BW_SESSION=$(bw unlock --raw)
+scripts/bw_sync_docker_secrets.sh  # Syncs secrets to .secrets/
 docker compose up --build
 
 # Pull an Ollama model (in another terminal)
@@ -114,6 +224,31 @@ docker compose up --scale agent=3
 # Stop and clean up
 docker compose down -v
 ```
+
+### Using Secrets (Production-Ready)
+
+The stack supports Docker secrets for sensitive credentials. By default, it uses development credentials, but you can sync production secrets from Bitwarden:
+
+1. **Create secrets in Bitwarden:**
+   ```bash
+   # Create LiveKit API credentials
+   scripts/bw_upsert_secret.sh --name livekit_api_key --password "your-api-key"
+   scripts/bw_upsert_secret.sh --name livekit_api_secret
+   
+   # Create Grafana admin password
+   scripts/bw_upsert_secret.sh --name grafana_admin_password
+   ```
+
+2. **Sync and start services:**
+   ```bash
+   scripts/bw_sync_docker_secrets.sh
+   docker compose up --build
+   ```
+
+The Docker Compose setup automatically:
+- Reads secrets from `.secrets/` directory if present
+- Falls back to development defaults if secrets don't exist
+- Never exposes secrets in environment variables or logs
 
 ### Service URLs
 

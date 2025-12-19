@@ -4,37 +4,40 @@
 
 @layer base {
   :root {
-    --background: 222 47% 6%;
-    --foreground: 210 40% 98%;
+    /* Broadcast Studio Color System - Luminance Optimized */
+    --base-background: #161616;
+    --elevated-surface: #222222;
+    --active-surface: #2d2d2d;
+    --primary-accent: #ff6b35;
+    --secondary-accent: #4a90e2;
+    --live-state: #ff6b35;
+    --success: #2d7d46;
+    --warning: #d97706;
+    --error: #c53030;
+    --muted-text: #94a3b8;
+    --body-text: #f3f4f6;
 
-    --card: 222 47% 8%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222 47% 8%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 190 100% 50%;
-    --primary-foreground: 222 47% 6%;
-
-    --secondary: 280 100% 50%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217 32% 17%;
-    --muted-foreground: 215 20% 65%;
-
-    --accent: 190 100% 50%;
-    --accent-foreground: 222 47% 6%;
-
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217 32% 17%;
-    --input: 217 32% 17%;
-    --ring: 190 100% 50%;
-
+    /* Legacy compatibility */
+    --background: 0 0% 4%;
+    --foreground: 0 0% 90%;
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 90%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 90%;
+    --primary: 16 100% 60%;
+    --primary-foreground: 0 0% 4%;
+    --secondary: 210 80% 58%;
+    --secondary-foreground: 0 0% 90%;
+    --muted: 0 0% 42%;
+    --muted-foreground: 0 0% 42%;
+    --accent: 16 100% 60%;
+    --accent-foreground: 0 0% 4%;
+    --destructive: 0 65% 48%;
+    --destructive-foreground: 0 0% 90%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 16 100% 60%;
     --radius: 0.75rem;
-
-    --neon-color: #00f5ff;
   }
 }
 
@@ -42,68 +45,82 @@
   * {
     @apply border-border;
   }
+
+  html {
+    background: var(--base-background);
+  }
+
   body {
-    @apply bg-background text-foreground;
+    background: var(--base-background);
+    color: var(--body-text);
     font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    line-height: 1.5;
+  }
+
+  /* Typography System */
+  h1, h2, h3, h4, h5, h6 {
+    color: var(--body-text);
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  p, span, label {
+    color: var(--body-text);
+  }
+
+  /* Form elements */
+  select, input, textarea {
+    color: var(--body-text);
+    background: var(--elevated-surface);
+  }
+
+  select option {
+    background: var(--base-background);
+    color: var(--body-text);
+  }
+
+  /* Focus states - WCAG compliant */
+  *:focus-visible {
+    outline: 2px solid var(--primary-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 }
 
-/* Glassmorphism base */
-.glass {
-  @apply bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl;
+/* Broadcast Studio Design System */
+
+/* Surface styles - borders, no shadows */
+.surface-elevated {
+  background: var(--elevated-surface);
+  border: 1px solid var(--active-surface);
+  border-radius: 12px;
 }
 
-.glass-strong {
-  @apply bg-white/10 backdrop-blur-2xl border border-white/20 rounded-2xl;
+.surface-active {
+  background: var(--active-surface);
+  border: 1px solid var(--primary-accent);
+  border-radius: 12px;
 }
 
-/* Neon glow effects */
-.neon-glow {
-  --neon-color: #00f5ff;
-  box-shadow: 0 0 5px var(--neon-color),
-              0 0 10px var(--neon-color),
-              0 0 20px var(--neon-color),
-              0 0 40px var(--neon-color);
+/* Live state glow - only during active transmission */
+.live-glow {
+  box-shadow: 0 0 8px rgba(255, 107, 53, 0.3),
+              0 0 16px rgba(255, 107, 53, 0.2);
 }
 
-.neon-glow-purple {
-  --neon-color: #bf00ff;
-  box-shadow: 0 0 5px var(--neon-color),
-              0 0 10px var(--neon-color),
-              0 0 20px var(--neon-color);
+.live-glow-strong {
+  box-shadow: 0 0 12px rgba(255, 107, 53, 0.5),
+              0 0 24px rgba(255, 107, 53, 0.3);
 }
 
-.neon-text {
-  text-shadow: 0 0 5px var(--neon-color),
-               0 0 10px var(--neon-color),
-               0 0 20px var(--neon-color);
-}
-
-/* Animated background gradient */
-.bg-gradient-animated {
-  background: linear-gradient(
-    -45deg,
-    hsl(222 47% 6%),
-    hsl(230 47% 8%),
-    hsl(250 47% 8%),
-    hsl(222 47% 6%)
-  );
-  background-size: 400% 400%;
-  animation: gradient 15s ease infinite;
-}
-
-@keyframes gradient {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
-/* Grid background */
+/* Subtle grid background - minimal */
 .bg-grid {
   background-image:
-    linear-gradient(rgba(0, 245, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 245, 255, 0.03) 1px, transparent 1px);
-  background-size: 50px 50px;
+    linear-gradient(rgba(255, 107, 53, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 107, 53, 0.015) 1px, transparent 1px);
+  background-size: 64px 64px;
 }
 
 /* Transcript styling */
@@ -121,21 +138,26 @@
   transition: height 0.1s ease-out;
 }
 
-/* Speaking indicator pulse */
-.speaking-pulse {
-  animation: speaking-pulse 1.5s ease-in-out infinite;
+/* Agent state pulse - broadcast style */
+.agent-pulse {
+  animation: agent-pulse 1000ms ease-in-out infinite;
 }
 
-@keyframes speaking-pulse {
+@keyframes agent-pulse {
   0%, 100% {
-    box-shadow: 0 0 10px #00f5ff, 0 0 20px #00f5ff;
     transform: scale(1);
+    opacity: 1;
   }
   50% {
-    box-shadow: 0 0 20px #00f5ff, 0 0 40px #00f5ff, 0 0 60px #00f5ff;
     transform: scale(1.05);
+    opacity: 0.9;
   }
 }
+
+/* State transition timing */
+.transition-fast { transition: all 150ms ease-out; }
+.transition-standard { transition: all 250ms ease-out; }
+.transition-slow { transition: all 400ms ease-in-out; }
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {

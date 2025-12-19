@@ -1,18 +1,18 @@
-# LiveKit Server Configuration for Local Development
+# LiveKit Server Configuration Template
 #
-# This is a minimal config for local development/testing.
-# For production, see: https://docs.livekit.io/realtime/self-hosting/deployment/
+# This template is processed at container startup to inject secrets
+# Placeholders: {{API_KEY}} and {{API_SECRET}}
 
 port: 7880
 rtc:
   port_range_start: 50000
-  port_range_end: 60000
+  port_range_end: 50010
   tcp_port: 7881
   use_external_ip: false
 
-# Development keys (DO NOT use in production)
+# API Keys (injected from Docker secrets)
 keys:
-  devkey: secret
+  {{API_KEY}}: {{API_SECRET}}
 
 # Logging
 logging:

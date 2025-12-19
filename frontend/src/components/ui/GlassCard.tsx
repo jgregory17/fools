@@ -7,26 +7,28 @@ interface GlassCardProps extends HTMLMotionProps<"div"> {
   children: React.ReactNode
   className?: string
   hover?: boolean
+  variant?: "elevated" | "active"
 }
 
-export function GlassCard({ children, className, hover = true, ...props }: GlassCardProps) {
+export function GlassCard({
+  children,
+  className,
+  hover = false,
+  variant = "elevated",
+  ...props
+}: GlassCardProps) {
   return (
     <motion.div
       className={cn(
-        "relative overflow-hidden",
-        "bg-white/5 backdrop-blur-xl",
-        "border border-white/10",
-        "rounded-2xl",
-        "shadow-2xl shadow-black/20",
-        hover && "transition-all duration-300 hover:bg-white/[0.07] hover:border-white/20",
+        "relative overflow-hidden rounded-xl",
+        variant === "elevated" && "bg-[#222222] border border-[#2d2d2d]",
+        variant === "active" && "bg-[#2d2d2d] border border-[#ff6b35]",
+        hover && "transition-standard hover:border-[#ff6b35]",
         className
       )}
-      whileHover={hover ? { scale: 1.01 } : undefined}
+      whileHover={hover ? { borderColor: "#ff6b35" } : undefined}
       {...props}
     >
-      {/* Gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent pointer-events-none" />
-
       {/* Content */}
       <div className="relative z-10">
         {children}

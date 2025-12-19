@@ -1,0 +1,128 @@
+# OpenTelemetry Collector Configuration
+# Receives telemetry data via OTLP and exports to multiple backends
+
+receivers:
+  # OTLP receiver for metrics, traces, and logs
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins:
+            - "http://localhost:*"
+            - "http://127.0.0.1:*"
+
+  # Prometheus receiver to scrape metrics from agents
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'agent-metrics'
+          scrape_interval: 15s
+          dns_sd_configs:
+            - names:
+                - 'agent'
+              type: 'A'
+              port: 8080
+          relabel_configs:
+            - source_labels: [__address__]
+              target_label: instance
+              replacement: '${1}'
+            - source_labels: [__address__]
+              regex: '([^:]+)(?::\d+)?'
+              target_label: agent_id
+              replacement: '${1}'
+
+processors:
+  # Add metadata to all telemetry
+  resource:
+    attributes:
+      - key: environment
+        value: local
+        action: upsert
+      - key: service.namespace
+        value: agent-playground
+        action: upsert
+
+  # Batch processing for better performance
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+
+  # Memory limiter to prevent OOM
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+exporters:
+  # Export metrics to Prometheus
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: "otel"
+    send_timestamps: true
+    metric_expiration: 5m
+    enable_open_metrics: true
+
+  # Export traces to Jaeger
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  # Export logs to Loki
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+    labels:
+      resource:
+        service.name: "service_name"
+        service.namespace: "service_namespace"
+        service.instance.id: "service_instance_id"
+      attributes:
+        level: "level"
+        agent_id: "agent_id"
+    headers:
+      "X-Scope-OrgID": "agent-playground"
+
+  # Debug exporter (optional, for troubleshooting)
+  logging:
+    loglevel: info
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+service:
+  pipelines:
+    # Metrics pipeline
+    metrics:
+      receivers: [otlp, prometheus]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheus, logging]
+
+    # Traces pipeline
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/jaeger, logging]
+
+    # Logs pipeline
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [loki, logging]
+
+  extensions: [health_check, pprof, zpages]
+
+extensions:
+  # Health check endpoint
+  health_check:
+    endpoint: 0.0.0.0:13133
+    path: "/health"
+
+  # Performance profiling
+  pprof:
+    endpoint: 0.0.0.0:1777
+
+  # zPages for debugging
+  zpages:
+    endpoint: 0.0.0.0:55679

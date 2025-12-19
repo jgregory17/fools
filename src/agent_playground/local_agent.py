@@ -46,98 +46,123 @@ class VoskSpeechStream(stt.SpeechStream):
 
     def __init__(
         self,
+        stt_instance,
         recognizer,
         language: str = "en",
         sample_rate: int = 16000,
+        conn_options=None,
     ):
-        super().__init__()
+        super().__init__(
+            stt=stt_instance,
+            conn_options=conn_options,
+            sample_rate=sample_rate,
+        )
         self._recognizer = recognizer
         self._language = language
-        self._sample_rate = sample_rate
-        self._queue: asyncio.Queue = asyncio.Queue()
-        self._closed = False
         self._speech_id_counter = 0
+        self._speaking = False
+        self._logger = logging.getLogger(__name__)
+        self._logger.debug(f"[VOSK] VoskSpeechStream initialized: language={language}, sample_rate={sample_rate}")
 
-    def push_frame(self, frame: rtc.AudioFrame) -> None:
-        """Push an audio frame for recognition."""
-        if self._closed:
-            return
-
-        # Convert to bytes and push to recognizer
-        audio_data = bytes(frame.data)
-
-        # Vosk accepts raw PCM16 audio
-        if self._recognizer.AcceptWaveform(audio_data):
-            # Final result available
-            import json
-            result = json.loads(self._recognizer.Result())
-            text = result.get("text", "").strip()
-            if text:
-                self._queue.put_nowait(stt.SpeechEvent(
-                    type=stt.SpeechEventType.FINAL_TRANSCRIPT,
-                    alternatives=[stt.SpeechData(
-                        text=text,
-                        language=self._language,
-                        confidence=1.0,
-                    )],
-                    speech_id=f"vosk_{self._speech_id_counter}",
-                ))
-                self._speech_id_counter += 1
-        else:
-            # Partial result
-            import json
-            partial = json.loads(self._recognizer.PartialResult())
-            text = partial.get("partial", "").strip()
-            if text:
-                self._queue.put_nowait(stt.SpeechEvent(
-                    type=stt.SpeechEventType.INTERIM_TRANSCRIPT,
-                    alternatives=[stt.SpeechData(
-                        text=text,
-                        language=self._language,
-                        confidence=0.8,
-                    )],
-                    speech_id=f"vosk_{self._speech_id_counter}",
-                ))
-
-    def end_input(self) -> None:
-        """Signal end of audio input."""
-        if self._closed:
-            return
-
-        # Get any remaining final result
+    async def _run(self) -> None:
+        """Main loop for streaming speech recognition."""
         import json
-        result = json.loads(self._recognizer.FinalResult())
-        text = result.get("text", "").strip()
-        if text:
-            self._queue.put_nowait(stt.SpeechEvent(
-                type=stt.SpeechEventType.FINAL_TRANSCRIPT,
-                alternatives=[stt.SpeechData(
-                    text=text,
-                    language=self._language,
-                    confidence=1.0,
-                )],
-                speech_id=f"vosk_{self._speech_id_counter}",
-            ))
 
-        self._closed = True
-        self._queue.put_nowait(None)  # Sentinel to stop iteration
+        self._logger.debug("[VOSK] _run() started, waiting for audio frames...")
+        frame_count = 0
 
-    async def aclose(self) -> None:
-        """Close the stream."""
-        self._closed = True
-        self._queue.put_nowait(None)
+        try:
+            # Process audio frames from the input channel
+            async for data in self._input_ch:
+                if isinstance(data, self._FlushSentinel):
+                    self._logger.debug(f"[VOSK] FlushSentinel received after {frame_count} frames")
+                    # Get final result
+                    result = json.loads(self._recognizer.FinalResult())
+                    text = result.get("text", "").strip()
+                    self._logger.debug(f"[VOSK] FlushSentinel final result: '{text}'")
+                    if text:
+                        self._logger.info(f"[VOSK] Sending FINAL_TRANSCRIPT: '{text}'")
+                        self._event_ch.send_nowait(stt.SpeechEvent(
+                            type=stt.SpeechEventType.FINAL_TRANSCRIPT,
+                            alternatives=[stt.SpeechData(
+                                text=text,
+                                language=self._language,
+                                confidence=1.0,
+                            )],
+                            request_id=f"vosk_{self._speech_id_counter}",
+                        ))
+                        self._speech_id_counter += 1
 
-    def __aiter__(self):
-        return self
+                    if self._speaking:
+                        self._speaking = False
+                        self._logger.debug("[VOSK] Sending END_OF_SPEECH")
+                        self._event_ch.send_nowait(
+                            stt.SpeechEvent(type=stt.SpeechEventType.END_OF_SPEECH)
+                        )
+                    frame_count = 0
+                    continue
 
-    async def __anext__(self) -> stt.SpeechEvent:
-        if self._closed and self._queue.empty():
-            raise StopAsyncIteration
+                # Process audio frame
+                frame_count += 1
+                audio_data = bytes(data.data)
+                self._logger.debug(f"[VOSK] Frame {frame_count}: received {len(audio_data)} bytes")
 
-        event = await self._queue.get()
-        if event is None:
-            raise StopAsyncIteration
-        return event
+                # Vosk accepts raw PCM16 audio
+                accepted = self._recognizer.AcceptWaveform(audio_data)
+                self._logger.debug(f"[VOSK] Frame {frame_count}: AcceptWaveform returned {accepted}")
+
+                if accepted:
+                    # Final result available
+                    result = json.loads(self._recognizer.Result())
+                    text = result.get("text", "").strip()
+                    self._logger.debug(f"[VOSK] Frame {frame_count}: Final result: '{text}'")
+                    if text:
+                        if not self._speaking:
+                            self._speaking = True
+                            self._logger.debug("[VOSK] Sending START_OF_SPEECH")
+                            self._event_ch.send_nowait(
+                                stt.SpeechEvent(type=stt.SpeechEventType.START_OF_SPEECH)
+                            )
+
+                        self._logger.info(f"[VOSK] Sending FINAL_TRANSCRIPT: '{text}'")
+                        self._event_ch.send_nowait(stt.SpeechEvent(
+                            type=stt.SpeechEventType.FINAL_TRANSCRIPT,
+                            alternatives=[stt.SpeechData(
+                                text=text,
+                                language=self._language,
+                                confidence=1.0,
+                            )],
+                            request_id=f"vosk_{self._speech_id_counter}",
+                        ))
+                        self._speech_id_counter += 1
+                else:
+                    # Partial result
+                    partial = json.loads(self._recognizer.PartialResult())
+                    text = partial.get("partial", "").strip()
+                    self._logger.debug(f"[VOSK] Frame {frame_count}: Partial result: '{text}'")
+                    if text:
+                        if not self._speaking:
+                            self._speaking = True
+                            self._logger.debug("[VOSK] Sending START_OF_SPEECH")
+                            self._event_ch.send_nowait(
+                                stt.SpeechEvent(type=stt.SpeechEventType.START_OF_SPEECH)
+                            )
+
+                        self._logger.debug(f"[VOSK] Sending INTERIM_TRANSCRIPT: '{text}'")
+                        self._event_ch.send_nowait(stt.SpeechEvent(
+                            type=stt.SpeechEventType.INTERIM_TRANSCRIPT,
+                            alternatives=[stt.SpeechData(
+                                text=text,
+                                language=self._language,
+                                confidence=0.8,
+                            )],
+                            request_id=f"vosk_{self._speech_id_counter}",
+                        ))
+        except Exception as e:
+            self._logger.error(f"[VOSK] Error in _run(): {e}", exc_info=True)
+            raise
+        finally:
+            self._logger.debug(f"[VOSK] _run() ended after processing {frame_count} frames")
 
 
 class LocalVoskSTT(stt.STT):
@@ -222,19 +247,25 @@ class LocalVoskSTT(stt.STT):
         logger.info("Vosk model loaded")
         return self._model
 
-    def stream(self, *, language: str | None = None) -> VoskSpeechStream:
+    def stream(self, *, language: str | None = None, conn_options=None, **kwargs) -> VoskSpeechStream:
         """Create a streaming recognition session."""
         from vosk import KaldiRecognizer
 
+        logger.debug(f"[VOSK] Creating streaming session: language={language or self._language}, sample_rate={self._sample_rate}")
         model = self._ensure_model()
         recognizer = KaldiRecognizer(model, self._sample_rate)
         recognizer.SetWords(True)
+        logger.debug("[VOSK] KaldiRecognizer created successfully")
 
-        return VoskSpeechStream(
+        stream = VoskSpeechStream(
+            stt_instance=self,
             recognizer=recognizer,
             language=language or self._language,
             sample_rate=self._sample_rate,
+            conn_options=conn_options,
         )
+        logger.info(f"[VOSK] VoskSpeechStream created and ready")
+        return stream
 
     async def _recognize_impl(
         self,
@@ -422,10 +453,17 @@ class LocalVoiceAssistant(Agent):
     async def on_enter(self) -> None:
         """Called when agent becomes active - generate greeting."""
         logger.info("LocalVoiceAssistant: Agent entered session")
-        await self.session.generate_reply(
-            instructions="Greet the user warmly and let them know you're running "
-                         "entirely on local hardware with no cloud dependencies.",
-        )
+        logger.debug(f"LocalVoiceAssistant: Session LLM type: {type(self.session.llm).__name__}")
+        logger.debug(f"LocalVoiceAssistant: Session LLM object: {self.session.llm}")
+
+        try:
+            logger.info("LocalVoiceAssistant: Calling session.generate_reply() for greeting")
+            await self.session.generate_reply(
+                instructions="Greet the user warmly and let them know you're ready to help.",
+            )
+            logger.info("LocalVoiceAssistant: session.generate_reply() completed successfully")
+        except Exception as e:
+            logger.error(f"LocalVoiceAssistant: session.generate_reply() failed: {e}", exc_info=True)
 
     async def close(self) -> None:
         """Release local model resources."""
@@ -446,6 +484,8 @@ def create_selfhosted_session(
     # LLM settings (Ollama)
     ollama_model: str = "llama3.2",
     ollama_base_url: str = "http://localhost:11434/v1",
+    # Optional: pass a custom LLM instance (for fake mode)
+    custom_llm: Optional[Any] = None,
     # VAD settings
     vad_min_speech_duration: float = 0.1,
     vad_min_silence_duration: float = 0.5,
@@ -494,11 +534,16 @@ def create_selfhosted_session(
     )
 
     # Local LLM (Ollama via OpenAI-compatible API)
-    local_llm = openai_plugin.LLM.with_ollama(
-        model=ollama_model,
-        base_url=ollama_base_url,
-        temperature=0.7,
-    )
+    # Or use custom_llm if provided (for fake mode)
+    if custom_llm is not None:
+        local_llm = custom_llm
+        logger.info(f"Using custom LLM: {type(custom_llm).__name__}")
+    else:
+        local_llm = openai_plugin.LLM.with_ollama(
+            model=ollama_model,
+            base_url=ollama_base_url,
+            temperature=0.7,
+        )
 
     # Turn detection - open-weights model that runs locally on CPU (<500MB RAM)
     # Improves conversation flow by predicting when user has finished speaking
@@ -508,9 +553,11 @@ def create_selfhosted_session(
             from livekit.plugins.turn_detector.multilingual import MultilingualModel
             turn_detection = MultilingualModel()
             logger.info("Turn detector model enabled (local, ~400MB)")
-        except ImportError:
+        except (ImportError, RuntimeError) as e:
             logger.warning(
-                "Turn detector not available. Install with: "
+                f"Turn detector not available ({e.__class__.__name__}). "
+                "Falling back to VAD-only mode. "
+                "To enable turn detection, run: "
                 "pip install 'livekit-agents[turn-detector]' && "
                 "python -m agent_playground.worker download-files"
             )
