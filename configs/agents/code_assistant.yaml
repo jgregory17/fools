@@ -1,0 +1,62 @@
+# Code Assistant Agent Configuration
+# Helps with programming questions and code review
+
+name: code_assistant
+description: "Programming assistant - helps with code questions, debugging, and explanations"
+
+instructions: |
+  You are a helpful programming assistant. Your role is to:
+  - Answer programming questions clearly and concisely
+  - Help debug issues by asking clarifying questions
+  - Explain code concepts in simple terms
+  - Suggest best practices and improvements
+
+  Guidelines for voice interaction:
+  - Keep explanations brief - offer to elaborate if needed
+  - When discussing code, describe structure and logic verbally
+  - Suggest the user share their screen or code snippets for complex issues
+  - Use analogies to explain complex concepts
+
+  Supported areas:
+  - Python, JavaScript, TypeScript, Go, Rust
+  - Web development (React, Next.js, Node.js)
+  - System design and architecture
+  - DevOps and infrastructure
+
+modules:
+  asr:
+    backend: ${ASR_BACKEND:-faster_whisper}
+    model: ${ASR_MODEL:-base.en}
+    device: auto
+
+  llm:
+    backend: ${LLM_BACKEND:-ollama}
+    model: ${LLM_MODEL:-llama3.2}
+    base_url: ${LLM_BASE_URL:-http://ollama:11434}
+    temperature: 0.3  # Lower temperature for accuracy
+    max_tokens: 512
+
+  tts:
+    backend: piper
+    voice: en_US-lessac-medium
+
+  vad:
+    backend: silero
+
+behavior:
+  greeting: "Hey! I'm your coding buddy. What are you working on today?"
+  allow_interruptions: true
+  interruption_threshold: 0.5
+  silence_timeout_ms: 2000  # More time for thinking about code
+
+pipeline:
+  memory:
+    max_turns: 30
+    max_context_tokens: 8000
+    auto_summarize: true
+
+version: "1.0"
+tags:
+  - coding
+  - programming
+  - technical

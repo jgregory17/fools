@@ -1,0 +1,74 @@
+# Prometheus Configuration for Agent Playground
+#
+# Scrapes metrics from agent service(s) and Prometheus itself.
+# Uses Docker DNS for service discovery.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Alerting rules (optional - add alertmanager for production)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: []
+
+# Rule files (optional)
+# rule_files:
+#   - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # OpenTelemetry Collector metrics
+  - job_name: 'otel-collector'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['otel-collector:8889']
+    # The OTel collector exports metrics that include agent metrics
+    # with proper labels preserved
+
+  # Direct agent scraping (as backup/comparison)
+  # You can disable this if all metrics go through OTel collector
+  - job_name: 'agent-direct'
+    scrape_interval: 5s
+    dns_sd_configs:
+      - names:
+          - 'agent'
+        type: 'A'
+        port: 8080
+    static_configs:
+      - targets: ['agent:8080']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+):\d+'
+        replacement: '${1}'
+
+  # Jaeger metrics
+  - job_name: 'jaeger'
+    static_configs:
+      - targets: ['jaeger:14269']
+
+  # Loki metrics
+  - job_name: 'loki'
+    static_configs:
+      - targets: ['loki:3100']
+    metrics_path: /metrics
+
+  # Promtail metrics
+  - job_name: 'promtail'
+    static_configs:
+      - targets: ['promtail:9080']
+
+  # Ollama LLM service (basic health)
+  - job_name: 'ollama'
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['ollama:11434']
+    metrics_path: /api/tags
+    # Ollama doesn't expose Prometheus metrics, but we can check it's alive
+    # The scrape will fail gracefully if endpoint doesn't return metrics format

@@ -1,0 +1,60 @@
+# Language Tutor Agent Configuration
+# Helps users practice conversational language skills
+
+name: language_tutor
+description: "Language learning tutor - conversational practice and pronunciation help"
+
+instructions: |
+  You are a friendly language tutor specializing in conversational practice. Your role is to:
+  - Engage in natural conversation to help users practice
+  - Gently correct pronunciation and grammar mistakes
+  - Introduce new vocabulary in context
+  - Adapt to the user's skill level
+
+  Teaching approach:
+  - Start with simple phrases and build complexity
+  - Repeat new words to reinforce learning
+  - Use encouragement and positive reinforcement
+  - Ask questions to keep conversation flowing
+  - Speak clearly and at an appropriate pace
+
+  You primarily help with English conversation practice, but can discuss
+  language learning strategies for any language.
+
+modules:
+  asr:
+    backend: ${ASR_BACKEND:-faster_whisper}
+    model: ${ASR_MODEL:-base.en}
+    device: auto
+
+  llm:
+    backend: ${LLM_BACKEND:-ollama}
+    model: ${LLM_MODEL:-llama3.2}
+    base_url: ${LLM_BASE_URL:-http://ollama:11434}
+    temperature: 0.6
+    max_tokens: 256
+
+  tts:
+    backend: piper
+    voice: en_US-lessac-medium
+
+  vad:
+    backend: silero
+
+behavior:
+  greeting: "Hello! Welcome to your language practice session. I'm excited to chat with you today. How are you feeling?"
+  allow_interruptions: false  # Let users complete their thoughts
+  interruption_threshold: 0.7
+  silence_timeout_ms: 3000  # Give learners time to formulate responses
+
+pipeline:
+  memory:
+    max_turns: 50
+    max_context_tokens: 6000
+    auto_summarize: true
+
+version: "1.0"
+tags:
+  - education
+  - language
+  - tutoring

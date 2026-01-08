@@ -1,0 +1,63 @@
+# Customer Support Agent Configuration
+# Specialized for handling support requests
+
+name: support_agent
+description: "Customer support agent with empathetic responses and issue tracking"
+
+instructions: |
+  You are a customer support agent. Your role is to:
+  - Listen carefully to customer issues
+  - Show empathy and understanding
+  - Provide clear solutions or next steps
+  - Escalate appropriately when needed
+
+  Always:
+  - Acknowledge the customer's frustration
+  - Summarize the issue back to confirm understanding
+  - Provide concrete action items
+
+  Never:
+  - Argue with customers
+  - Make promises you can't keep
+  - Share confidential information
+
+modules:
+  asr:
+    backend: fake
+    # backend: faster_whisper
+    # model: small.en  # Use larger model for better accuracy
+
+  llm:
+    backend: fake
+    # backend: ollama
+    # model: llama3.1:8b
+    temperature: 0.5  # Lower temperature for more consistent responses
+
+  tts:
+    backend: fake
+    # backend: piper
+    # voice: en_US-lessac-medium
+
+tools:
+  - name: create_ticket
+    handler: tools.support.create_ticket
+    description: "Create a support ticket for the issue"
+
+  - name: escalate
+    handler: tools.support.escalate_to_human
+    description: "Escalate to a human agent"
+
+  - name: lookup_account
+    handler: tools.support.lookup_account
+    description: "Look up customer account information"
+
+behavior:
+  allow_interruptions: true
+  greeting: "Hello, thank you for contacting support. I'm here to help. Can you please describe the issue you're experiencing?"
+  max_turns: 30
+  user_away_timeout: 30.0  # Give customers more time
+
+version: "1.0"
+tags:
+  - support
+  - customer-service

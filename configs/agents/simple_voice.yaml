@@ -1,0 +1,49 @@
+# Simple Voice Agent Configuration
+# A basic voice assistant for general conversations
+
+name: simple_voice
+description: "Simple voice assistant with basic conversation capabilities"
+
+instructions: |
+  You are a helpful voice AI assistant. You should:
+  - Be concise and conversational (this is a voice interface)
+  - Respond in 1-3 sentences unless more detail is requested
+  - Be friendly and professional
+  - Ask clarifying questions if needed
+
+modules:
+  asr:
+    backend: fake
+    # For real ASR, use:
+    # backend: faster_whisper
+    # model: base.en
+    # device: cuda
+    sample_rate: 24000
+
+  llm:
+    backend: fake
+    # For real LLM, use:
+    # backend: ollama
+    # model: llama3.1
+    temperature: 0.7
+
+  tts:
+    backend: fake
+    # For real TTS, use:
+    # backend: piper
+    # voice: en_US-lessac-medium
+    sample_rate: 24000
+
+tools: []
+
+behavior:
+  allow_interruptions: true
+  greeting: "Hello! I'm your voice assistant. How can I help you today?"
+  max_turns: 100
+  user_away_timeout: 15.0
+  preemptive_generation: false
+
+version: "1.0"
+tags:
+  - starter
+  - general-purpose
